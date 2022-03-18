@@ -1,0 +1,29 @@
+specVersion: 0.0.1
+schema:
+  file: ./schema.graphql
+dataSources:
+  - kind: ethereum
+    name: Contract
+    network: mainnet
+    source:
+      address: "0xaDcA0dd4729c8BA3aCf3E99F3A9f471EF37b6825"
+      abi: Contract
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.5
+      language: wasm/assemblyscript
+      entities:
+        - AdminUpdated
+        - ImplementationUpdated
+        - PendingImplementationUpdated
+      abis:
+        - name: Contract
+          file: ./abis/Contract.json
+      eventHandlers:
+        - event: AdminUpdated(indexed address,indexed address)
+          handler: handleAdminUpdated
+        - event: ImplementationUpdated(indexed address,indexed address)
+          handler: handleImplementationUpdated
+        - event: PendingImplementationUpdated(indexed address,indexed address)
+          handler: handlePendingImplementationUpdated
+      file: ./src/mapping.ts
