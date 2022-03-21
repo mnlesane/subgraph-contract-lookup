@@ -1,6 +1,11 @@
-type ExampleEntity @entity {
+type ContractAssociation @entity {
+  # Contract Address
   id: ID!
-  count: BigInt!
-  oldAdmin: Bytes! # address
-  newAdmin: Bytes! # address
+  
+  # Mainnet Subgraph
+  subgraph: Subgraph!
+}
+
+type Subgraph @entity {
+  id: ID!
 }
