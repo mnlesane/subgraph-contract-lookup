@@ -1,4 +1,4 @@
-import { BigDecimal, BigInt, Bytes, ipfs, json } from '@graphprotocol/graph-ts'
+import { BigDecimal, BigInt, Bytes, ipfs, json, log } from '@graphprotocol/graph-ts'
 
 import {
 SubgraphPublished1,
@@ -23,32 +23,14 @@ import {
 // - event: SubgraphPublished(indexed uint256,indexed bytes32,uint32)
 //   handler: handleSubgraphPublishedV2
 
-export function handleSubgraphPublished(event: SubgraphPublished1): void {
-  let bigIntID = event.params.subgraphID
-  let subgraph = createOrLoadSubgraph(bigIntID)
-}
+export function processManifest(subgraph: Subgraph, subgraphDeploymentID: String): void {
+  let subgraphID = subgraph.id
+  let prefix = '1220'
+  let ipfsHash = Bytes.fromHexString(prefix.concat(subgraphDeploymentID.slice(2))).toBase58()
 
-// - event: SubgraphDeprecated(indexed uint256,uint256)
-//   handler: handleSubgraphDeprecatedV2
-
-export function handleSubgraphDeprecated(event: SubgraphDeprecated1): void {
-  let bigIntID = event.params.subgraphID
-  let subgraph = createOrLoadSubgraph(bigIntID)
-  subgraph.active = false
-  subgraph.save()
-}
-
-// - event: SubgraphMetadataUpdated(indexed uint256,bytes32)
-//   handler: handleSubgraphMetadataUpdatedV2
-
-export function handleSubgraphMetadataUpdated(event: SubgraphMetadataUpdated1): void {
-  let bigIntID = event.params.subgraphID
-  let subgraph = createOrLoadSubgraph(bigIntID)
-  let subgraphID = convertBigIntSubgraphIDToBase58(bigIntID)
-
-  let ipfsMetadataHash = addQm(event.params.subgraphMetadata).toBase58()
-
-  let ipfsData = ipfs.cat(ipfsMetadataHash)
+  log.info("Checking IPFS for hash '{}'",[ipfsHash])
+  
+  let ipfsData = ipfs.cat(ipfsHash)
   
   if(ipfsData !== null) {
     let tryData = json.try_fromBytes(ipfsData as Bytes)
@@ -80,14 +62,45 @@ export function handleSubgraphMetadataUpdated(event: SubgraphMetadataUpdated1): 
   }
 }
 
+export function handleSubgraphPublished(event: SubgraphPublished1): void {
+  let bigIntID = event.params.subgraphID
+  let subgraph = createOrLoadSubgraph(bigIntID)
+  let subgraphDeploymentID = event.params.subgraphDeploymentID.toHexString()
+  processManifest(subgraph,subgraphDeploymentID)
+}
+
 // - event: SubgraphVersionUpdated(indexed uint256,indexed bytes32,bytes32)
 //   handler: handleSubgraphVersionUpdated
 
 // Might need to workaround this one, because of the ordering in subgraph creation scenario,
 // we need to run this same code in SubgraphPublished (v2) too, and flag it so some of these executions
 // don't create bugs (like double counting/creating versions)
-
 export function handleSubgraphVersionUpdated(event: SubgraphVersionUpdated): void {
   let bigIntID = event.params.subgraphID
   let subgraph = createOrLoadSubgraph(bigIntID)
+  let subgraphDeploymentID = event.params.subgraphDeploymentID.toHexString()
+  processManifest(subgraph,subgraphDeploymentID)
 }
+
+// - event: SubgraphDeprecated(indexed uint256,uint256)
+//   handler: handleSubgraphDeprecatedV2
+
+export function handleSubgraphDeprecated(event: SubgraphDeprecated1): void {
+  let bigIntID = event.params.subgraphID
+  let subgraph = createOrLoadSubgraph(bigIntID)
+  subgraph.active = false
+  subgraph.save()
+}
+
+// - event: SubgraphMetadataUpdated(indexed uint256,bytes32)
+//   handler: handleSubgraphMetadataUpdatedV2
+
+export function handleSubgraphMetadataUpdated(event: SubgraphMetadataUpdated1): void {
+  /*
+  let bigIntID = event.params.subgraphID
+  let subgraph = createOrLoadSubgraph(bigIntID)
+  let subgraphID = convertBigIntSubgraphIDToBase58(bigIntID)
+  */
+}
+
+
