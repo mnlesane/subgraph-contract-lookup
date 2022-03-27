@@ -45,9 +45,11 @@ export function handleSubgraphMetadataUpdated(event: SubgraphMetadataUpdated1): 
   let bigIntID = event.params.subgraphID
   let subgraph = createOrLoadSubgraph(bigIntID)
   let subgraphID = convertBigIntSubgraphIDToBase58(bigIntID)
-  
-  let ipfsMetadataHash = changetype<string>(addQm(event.params.subgraphMetadata))
+
+  let ipfsMetadataHash = addQm(event.params.subgraphMetadata).toBase58()
+
   let ipfsData = ipfs.cat(ipfsMetadataHash)
+  
   if(ipfsData !== null) {
     let tryData = json.try_fromBytes(ipfsData as Bytes)
     if (tryData.isOk) {
