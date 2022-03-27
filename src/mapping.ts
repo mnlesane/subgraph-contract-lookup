@@ -1,60 +1,91 @@
-import { BigInt } from "@graphprotocol/graph-ts"
+import { BigDecimal, BigInt, Bytes, ipfs, json } from '@graphprotocol/graph-ts'
+
 import {
-  Contract,
-  AdminUpdated,
-  ImplementationUpdated,
-  PendingImplementationUpdated
-} from "../generated/Contract/Contract"
-import { ExampleEntity } from "../generated/schema"
+SubgraphPublished1,
+SubgraphDeprecated1,
+SubgraphMetadataUpdated1,
+SubgraphVersionUpdated
+} from './types/GNS/GNSStitched'
 
-export function handleAdminUpdated(event: AdminUpdated): void {
-  // Entities can be loaded from the store using a string ID; this ID
-  // needs to be unique across all entities of the same type
-  let entity = ExampleEntity.load(event.transaction.from.toHex())
+import {
+Contract,
+Subgraph,
+SubgraphDeployment
+} from './types/schema'
 
-  // Entities only exist after they have been saved to the store;
-  // `null` checks allow to create entities on demand
-  if (!entity) {
-    entity = new ExampleEntity(event.transaction.from.toHex())
+import {
+  convertBigIntSubgraphIDToBase58,
+  createOrLoadSubgraph,
+  createOrLoadContract,
+  addQm,
+} from './helpers'
 
-    // Entity fields can be set using simple assignments
-    entity.count = BigInt.fromI32(0)
-  }
+// - event: SubgraphPublished(indexed uint256,indexed bytes32,uint32)
+//   handler: handleSubgraphPublishedV2
 
-  // BigInt and BigDecimal math are supported
-  entity.count = entity.count + BigInt.fromI32(1)
-
-  // Entity fields can be set based on event parameters
-  entity.oldAdmin = event.params.oldAdmin
-  entity.newAdmin = event.params.newAdmin
-
-  // Entities can be written to the store with `.save()`
-  entity.save()
-
-  // Note: If a handler doesn't require existing field values, it is faster
-  // _not_ to load the entity from the store. Instead, create it fresh with
-  // `new Entity(...)`, set the fields that should be updated and save the
-  // entity back to the store. Fields that were not set or unset remain
-  // unchanged, allowing for partial updates to be applied.
-
-  // It is also possible to access smart contracts from mappings. For
-  // example, the contract that has emitted the event can be connected to
-  // with:
-  //
-  // let contract = Contract.bind(event.address)
-  //
-  // The following functions can then be called on this contract to access
-  // state variables and other data:
-  //
-  // - contract.admin(...)
-  // - contract.implementation(...)
-  // - contract.pendingImplementation(...)
+export function handleSubgraphPublished(event: SubgraphPublished1): void {
+  let bigIntID = event.params.subgraphID
+  let subgraph = createOrLoadSubgraph(bigIntID)
 }
 
-export function handleImplementationUpdated(
-  event: ImplementationUpdated
-): void {}
+// - event: SubgraphDeprecated(indexed uint256,uint256)
+//   handler: handleSubgraphDeprecatedV2
 
-export function handlePendingImplementationUpdated(
-  event: PendingImplementationUpdated
-): void {}
+export function handleSubgraphDeprecated(event: SubgraphDeprecated1): void {
+  let bigIntID = event.params.subgraphID
+  let subgraph = createOrLoadSubgraph(bigIntID)
+  subgraph.active = false
+  subgraph.save()
+}
+
+// - event: SubgraphMetadataUpdated(indexed uint256,bytes32)
+//   handler: handleSubgraphMetadataUpdatedV2
+
+export function handleSubgraphMetadataUpdated(event: SubgraphMetadataUpdated1): void {
+  let bigIntID = event.params.subgraphID
+  let subgraph = createOrLoadSubgraph(bigIntID)
+  let subgraphID = convertBigIntSubgraphIDToBase58(bigIntID)
+  
+  let ipfsMetadataHash = changetype<string>(addQm(event.params.subgraphMetadata))
+  let ipfsData = ipfs.cat(ipfsMetadataHash)
+  if(ipfsData !== null) {
+    let tryData = json.try_fromBytes(ipfsData as Bytes)
+    if (tryData.isOk) {
+      let data = tryData.value.toObject()
+      let dataSources = data.get("dataSources")
+      if(dataSources !== null) {
+        let dataSourcesArray = dataSources.toArray()
+        for(let i = 0; i < dataSourcesArray.length; i++) {
+          let dataSource = dataSourcesArray[i]
+          let dataSourceObject = dataSource.toObject()
+          let source = dataSourceObject.get("source")
+          if(source !== null) {
+            let sourceObject = source.toObject()
+            let address = sourceObject.get("address")
+            if(address !== null) {
+              let contract = createOrLoadContract(address.toString())
+              let assoc = contract.subgraph
+              assoc.push(subgraphID)
+              contract.subgraph = assoc
+              contract.save()
+            }
+          }
+        }
+      }
+    } else {
+      //
+    }
+  }
+}
+
+// - event: SubgraphVersionUpdated(indexed uint256,indexed bytes32,bytes32)
+//   handler: handleSubgraphVersionUpdated
+
+// Might need to workaround this one, because of the ordering in subgraph creation scenario,
+// we need to run this same code in SubgraphPublished (v2) too, and flag it so some of these executions
+// don't create bugs (like double counting/creating versions)
+
+export function handleSubgraphVersionUpdated(event: SubgraphVersionUpdated): void {
+  let bigIntID = event.params.subgraphID
+  let subgraph = createOrLoadSubgraph(bigIntID)
+}

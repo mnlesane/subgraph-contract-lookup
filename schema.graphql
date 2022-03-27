@@ -1,11 +1,21 @@
-type ContractAssociation @entity {
+type Contract @entity {
   # Contract Address
   id: ID!
   
   # Mainnet Subgraph
-  subgraph: Subgraph!
+  subgraph: [Subgraph!]! @derivedFrom(field: "contract")
 }
 
 type Subgraph @entity {
+  id: ID!
+  active: Boolean!
+  contract: [Contract!]!
+}
+
+type SubgraphDeployment @entity {
+  id: ID!
+}
+
+type SubgraphVersion @entity {
   id: ID!
 }

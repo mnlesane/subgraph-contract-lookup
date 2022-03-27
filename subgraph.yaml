@@ -6,25 +6,26 @@ dataSources:
     name: Contract
     network: mainnet
     source:
-      address: "0xaDcA0dd4729c8BA3aCf3E99F3A9f471EF37b6825"
-      abi: Contract
+#      address: "0xfdf6de9c5603d85e1dae3d00a776f43913c9b203"
+      address: "0xadca0dd4729c8ba3acf3e99f3a9f471ef37b6825"
+      abi: GNSStitched
       startBlock: 11446781
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.5
       language: wasm/assemblyscript
       entities:
-        - AdminUpdated
-        - ImplementationUpdated
-        - PendingImplementationUpdated
+        - ContractAssociation
       abis:
-        - name: Contract
-          file: ./abis/Contract.json
+        - name: GNSStitched
+          file: ./abis/GNSStitched.json
       eventHandlers:
-        - event: AdminUpdated(indexed address,indexed address)
-          handler: handleAdminUpdated
-        - event: ImplementationUpdated(indexed address,indexed address)
-          handler: handleImplementationUpdated
-        - event: PendingImplementationUpdated(indexed address,indexed address)
-          handler: handlePendingImplementationUpdated
+        - event: 'SubgraphPublished(indexed uint256,indexed bytes32,uint32)'
+          handler: handleSubgraphPublished
+        - event: 'SubgraphDeprecated(indexed uint256,uint256)'
+          handler: handleSubgraphDeprecated
+        - event: 'SubgraphMetadataUpdated(indexed uint256,bytes32)'
+          handler: handleSubgraphMetadataUpdated
+        - event: 'SubgraphVersionUpdated(indexed uint256,indexed bytes32,bytes32)'
+          handler: handleSubgraphVersionUpdated
       file: ./src/mapping.ts
