@@ -23,41 +23,95 @@ import {
 // - event: SubgraphPublished(indexed uint256,indexed bytes32,uint32)
 //   handler: handleSubgraphPublishedV2
 
+export function stripQuotes(str: String): String {
+  let res = ''
+  let remove = ['\'','"',' ']
+  for(let i = 0; i < str.length; i++) {
+    if(!remove.includes(str[i])) res = res.concat(str[i])
+  }
+  return res as String
+}
+
+export function extractContractAddresses(ipfsData: String): Array<String> {
+  let res = new Array<String>(0)
+  // Use split() until a suitable YAML parser is found.  Approach was used in graph-network-subgraph.
+  log.debug("Splitting dataSources",[])
+  let dataSourcesSplit = ipfsData.split('dataSources:\n',2)
+  let dataSourcesStr = ''
+  if(dataSourcesSplit.length >= 2) {
+    dataSourcesStr = dataSourcesSplit[1];
+  } else {
+    // Problem
+    return res as Array<String>
+  }
+  // Determine where 'dataSources:' ends, exclude everything thereafter.
+  log.debug("Sanitizing dataSources split",[])
+  let sanitizeSplit = dataSourcesStr.split('\n')
+  let shouldDelete = false
+  // Assumes 32 for space.
+  dataSourcesStr = ''
+  for(let i = 0; i < sanitizeSplit.length; i++) {
+    if(sanitizeSplit[i].charAt(0) != ' ' || shouldDelete) {
+      shouldDelete = true
+    } else {
+      dataSourcesStr = dataSourcesStr.concat(sanitizeSplit[i])
+      if(i < sanitizeSplit.length - 1) {
+        dataSourcesStr = dataSourcesStr.concat('\n')
+      }
+    }
+  }
+  
+  // Extract
+  log.debug("Splitting kind from '{}'",[dataSourcesStr])
+  let kindSplit = dataSourcesStr.split('- kind:')
+  let sourceStr = ''
+  let addressStr = ''
+  let addressIso = ''
+  for(let i = 1; i < kindSplit.length; i++) {
+    log.debug("Splitting source from '{}'",[kindSplit[i]])
+    let sourceSplit = kindSplit[i].split(' source:',2)
+    if(sourceSplit.length < 2) continue
+    else sourceStr = sourceSplit[1]
+    
+    log.debug("Splitting address from '{}'",[sourceStr])
+    let addressSplit = sourceStr.split(' address:',2)
+    if(addressSplit.length < 2) continue
+    else addressStr = addressSplit[1]
+    
+    log.debug("Isolating address from '{}'",[addressStr])
+    let addressStrSplit = addressStr.split('\n',2)
+    if(addressStrSplit.length < 2) continue
+    else addressIso = addressStrSplit[0]
+    
+    log.debug("Address '{}' extracted",[addressIso])
+    res.push(stripQuotes(addressIso))
+  }
+  
+  return res as Array<String>
+}
+
 export function processManifest(subgraph: Subgraph, subgraphDeploymentID: String): void {
   let subgraphID = subgraph.id
   let prefix = '1220'
   let ipfsHash = Bytes.fromHexString(prefix.concat(subgraphDeploymentID.slice(2))).toBase58()
 
-  log.info("Checking IPFS for hash '{}'",[ipfsHash])
+  log.debug("Checking IPFS for hash '{}'",[ipfsHash])
   
   let ipfsData = ipfs.cat(ipfsHash)
   
   if(ipfsData !== null) {
-    let tryData = json.try_fromBytes(ipfsData as Bytes)
-    if (tryData.isOk) {
-      let data = tryData.value.toObject()
-      let dataSources = data.get("dataSources")
-      if(dataSources !== null) {
-        let dataSourcesArray = dataSources.toArray()
-        for(let i = 0; i < dataSourcesArray.length; i++) {
-          let dataSource = dataSourcesArray[i]
-          let dataSourceObject = dataSource.toObject()
-          let source = dataSourceObject.get("source")
-          if(source !== null) {
-            let sourceObject = source.toObject()
-            let address = sourceObject.get("address")
-            if(address !== null) {
-              let contract = createOrLoadContract(address.toString())
-              let assoc = contract.subgraph
-              assoc.push(subgraphID)
-              contract.subgraph = assoc
-              contract.save()
-            }
-          }
-        }
+    let contractAddresses = extractContractAddresses(ipfsData.toString())
+    let address = ''
+    for(let i = 0; i < contractAddresses.length; i++) {
+      address = contractAddresses[i]
+      log.debug("Associating address '{}'",[address])
+      let contract = createOrLoadContract(address)
+      let assoc = subgraph.contract
+      if(assoc.indexOf(address) == -1) {
+        assoc.push(address)
+        subgraph.contract = assoc
+        subgraph.save()
       }
-    } else {
-      //
     }
   }
 }
