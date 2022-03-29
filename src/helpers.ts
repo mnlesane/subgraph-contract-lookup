@@ -49,3 +49,13 @@ export function addQm(a: ByteArray): ByteArray {
   }
   return changetype<ByteArray>(out)
 }
+
+export function getSubgraphID(graphAccount: Address, subgraphNumber: BigInt): BigInt {
+  let graphAccountStr = graphAccount.toHexString()
+  let subgraphNumberStr = subgraphNumber.toHexString().slice(2)
+  let number = subgraphNumberStr.padStart(64, '0')
+  let unhashedSubgraphID = graphAccountStr.concat(number)
+  let hashedId = Bytes.fromByteArray(crypto.keccak256(ByteArray.fromHexString(unhashedSubgraphID)))
+  let bigIntRepresentation = BigInt.fromUnsignedBytes(changetype<Bytes>(hashedId.reverse()))
+  return bigIntRepresentation
+}
