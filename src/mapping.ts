@@ -4,6 +4,9 @@ import {
 SubgraphPublished1,
 SubgraphDeprecated1,
 SubgraphMetadataUpdated1,
+SubgraphPublished,
+SubgraphDeprecated,
+SubgraphMetadataUpdated,
 SubgraphVersionUpdated
 } from './types/GNS/GNSStitched'
 
@@ -17,7 +20,8 @@ import {
   convertBigIntSubgraphIDToBase58,
   createOrLoadSubgraph,
   createOrLoadContract,
-  addQm,
+  getSubgraphID,
+  addQm
 } from './helpers'
 
 // - event: SubgraphPublished(indexed uint256,indexed bytes32,uint32)
@@ -116,11 +120,35 @@ export function processManifest(subgraph: Subgraph, subgraphDeploymentID: String
   }
 }
 
-export function handleSubgraphPublished(event: SubgraphPublished1): void {
+export function handleSubgraphPublishedV2(event: SubgraphPublished1): void {
   let bigIntID = event.params.subgraphID
   let subgraph = createOrLoadSubgraph(bigIntID)
   let subgraphDeploymentID = event.params.subgraphDeploymentID.toHexString()
   processManifest(subgraph,subgraphDeploymentID)
+}
+
+export function handleSubgraphPublished(event: SubgraphPublished): void {
+  let bigIntID = getSubgraphID(event.params.graphAccount, event.params.subgraphNumber)
+  let subgraph = createOrLoadSubgraph(bigIntID)
+  let subgraphDeploymentID = event.params.subgraphDeploymentID.toHexString()
+  processManifest(subgraph,subgraphDeploymentID)  
+}
+
+// - event: SubgraphDeprecated(indexed uint256,uint256)
+//   handler: handleSubgraphDeprecatedV2
+
+export function handleSubgraphDeprecatedV2(event: SubgraphDeprecated1): void {
+  let bigIntID = event.params.subgraphID
+  let subgraph = createOrLoadSubgraph(bigIntID)
+  subgraph.active = false
+  subgraph.save()
+}
+
+export function handleSubgraphDeprecated(event: SubgraphDeprecated): void {
+  let bigIntID = getSubgraphID(event.params.graphAccount, event.params.subgraphNumber)
+  let subgraph = createOrLoadSubgraph(bigIntID)
+  subgraph.active = false
+  subgraph.save()
 }
 
 // - event: SubgraphVersionUpdated(indexed uint256,indexed bytes32,bytes32)
@@ -136,25 +164,12 @@ export function handleSubgraphVersionUpdated(event: SubgraphVersionUpdated): voi
   processManifest(subgraph,subgraphDeploymentID)
 }
 
-// - event: SubgraphDeprecated(indexed uint256,uint256)
-//   handler: handleSubgraphDeprecatedV2
-
-export function handleSubgraphDeprecated(event: SubgraphDeprecated1): void {
-  let bigIntID = event.params.subgraphID
-  let subgraph = createOrLoadSubgraph(bigIntID)
-  subgraph.active = false
-  subgraph.save()
-}
-
 // - event: SubgraphMetadataUpdated(indexed uint256,bytes32)
 //   handler: handleSubgraphMetadataUpdatedV2
 
-export function handleSubgraphMetadataUpdated(event: SubgraphMetadataUpdated1): void {
-  /*
-  let bigIntID = event.params.subgraphID
-  let subgraph = createOrLoadSubgraph(bigIntID)
-  let subgraphID = convertBigIntSubgraphIDToBase58(bigIntID)
-  */
+export function handleSubgraphMetadataUpdatedV2(event: SubgraphMetadataUpdated1): void {
 }
 
+export function handleSubgraphMetadataUpdated(event: SubgraphMetadataUpdated): void {
+}
 
