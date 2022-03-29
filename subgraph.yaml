@@ -21,11 +21,21 @@ dataSources:
           file: ./abis/GNSStitched.json
       eventHandlers:
         - event: 'SubgraphPublished(indexed uint256,indexed bytes32,uint32)'
-          handler: handleSubgraphPublished
+          handler: handleSubgraphPublishedV2
         - event: 'SubgraphDeprecated(indexed uint256,uint256)'
-          handler: handleSubgraphDeprecated
+          handler: handleSubgraphDeprecatedV2
         - event: 'SubgraphMetadataUpdated(indexed uint256,bytes32)'
-          handler: handleSubgraphMetadataUpdated
+          handler: handleSubgraphMetadataUpdatedV2
         - event: 'SubgraphVersionUpdated(indexed uint256,indexed bytes32,bytes32)'
           handler: handleSubgraphVersionUpdated
+        - event: >-
+            SubgraphPublished(indexed address,indexed uint256,indexed
+            bytes32,bytes32)
+          handler: handleSubgraphPublished
+        - event: 'SubgraphDeprecated(indexed address,indexed uint256)'
+          handler: handleSubgraphDeprecated
+        - event: 'SubgraphMetadataUpdated(indexed address,indexed uint256,bytes32)'
+          handler: handleSubgraphMetadataUpdated
+        - event: 'SubgraphUpgraded(indexed uint256,uint256,uint256,indexed bytes32)'
+          handler: handleSubgraphUpgraded
       file: ./src/mapping.ts
