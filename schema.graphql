@@ -1,21 +1,74 @@
+type ContractEvent @entity {
+
+  id: ID!
+  contract: Contract! @derivedFrom(field: "contractEvent")
+}
+
 type Contract @entity {
   # Contract Address
   id: ID!
-  
+  name: String
   # Mainnet Subgraph
   subgraph: [Subgraph!]! @derivedFrom(field: "contract")
+  
+  contractEvent: [ContractEvent!]!
 }
 
 type Subgraph @entity {
   id: ID!
   active: Boolean!
   contract: [Contract!]!
+  
+  owner: GraphAccount!
+  createdAt: Int!
+  updatedAt: Int!
+  displayName: String
+  description: String
+  image: String
+  codeRepository: String
+  website: String
+  versionCount: BigInt!
+  versions: [SubgraphVersion!]! @derivedFrom(field: "subgraph")
+  metadataHash: Bytes!
+  ipfsMetadataHash: String
+  currentVersion: SubgraphVersion
+}
+
+type GraphAccount @entity {
+
+  id: ID!
+  subgraph: [Subgraph!]! @derivedFrom(field: "owner")
+  
 }
 
 type SubgraphDeployment @entity {
+
   id: ID!
+  ipfsHash: String!
+  versions: [SubgraphVersion!]! @derivedFrom(field: "subgraphDeployment")
+  createdAt: Int!
+  originalName: String
+  manifest: String
+  network: Network!
+  schema: String
+  schemaIpfsHash: String
+}
+
+type Network @entity {
+
+  id: ID!
+  deployments: [SubgraphDeployment!]! @derivedFrom(field: "network")
 }
 
 type SubgraphVersion @entity {
+
   id: ID!
+  subgraph: Subgraph!
+  subgraphDeployment: SubgraphDeployment!
+  version: Int!
+  createdAt: Int!
+  metadataHash: Bytes
+  description: String
+  contractEvent: [ContractEvent!]!
+  label: String
 }
