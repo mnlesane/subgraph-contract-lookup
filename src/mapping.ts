@@ -1,3 +1,36 @@
+/*
+# TODO refactor - use classes/models to reduce redundant logic generating and updating entities
+{
+  subgraphs(first:5,orderBy:createdAt,orderDirection:desc) {
+    id
+    owner { id }
+    active
+    createdAt updatedAt
+    displayName description image
+    codeRepository website
+    versionCount
+    versions {
+      id
+      version
+      createdAt
+      metadataHash
+      description
+      subgraphDeployment {
+        id
+        ipfsHash
+        createdAt
+        originalName
+        manifest
+        network {
+          id
+        }
+        schema
+        schemaIpfsHash
+      }
+    }
+  }
+}
+*/
 import { BigDecimal, BigInt, Bytes, ipfs, json, log } from '@graphprotocol/graph-ts'
 
 import {
@@ -7,22 +40,50 @@ SubgraphMetadataUpdated1,
 SubgraphPublished,
 SubgraphDeprecated,
 SubgraphMetadataUpdated,
-SubgraphVersionUpdated
+SubgraphVersionUpdated,
+SubgraphUpgraded,
+Transfer
 } from './types/GNS/GNSStitched'
 
 import {
 Contract,
 Subgraph,
-SubgraphDeployment
+SubgraphDeployment,
+SubgraphVersion,
+ContractEvent,
+Network,
+GraphAccount
 } from './types/schema'
 
 import {
   convertBigIntSubgraphIDToBase58,
   createOrLoadSubgraph,
   createOrLoadContract,
+  createOrLoadGraphAccount,
+  createOrLoadSubgraphDeployment,
   getSubgraphID,
-  addQm
+  addQm,
+  joinID,
+  fetchSubgraphMetadata,
+  fetchSubgraphVersionMetadata,
+  fetchSubgraphDeploymentManifest,
+  createOrLoadNetwork
 } from './helpers'
+
+/*
+TODO
+[V1]
+* name
+* logo
+* IPFS hash (so you can link to the explorer as well)
+* deployment/version
+
+[V1.5]
+* publisher/ENS
+
+[V2]
+* Signal and QF may be a following iteration, but slapping that into a UI seems pretty easy from there.
+*/
 
 // - event: SubgraphPublished(indexed uint256,indexed bytes32,uint32)
 //   handler: handleSubgraphPublishedV2
@@ -68,10 +129,19 @@ export function extractContractAddresses(ipfsData: String): Array<String> {
   // Extract
   log.debug("Splitting kind from '{}'",[dataSourcesStr])
   let kindSplit = dataSourcesStr.split('- kind:')
+
   let sourceStr = ''
+
   let addressStr = ''
   let addressIso = ''
+
+  let nameIso = ''
+  
   for(let i = 1; i < kindSplit.length; i++) {
+    nameIso = ''
+    addressIso = ''
+        
+    // Source Address
     log.debug("Splitting source from '{}'",[kindSplit[i]])
     let sourceSplit = kindSplit[i].split(' source:',2)
     if(sourceSplit.length < 2) continue
@@ -89,6 +159,15 @@ export function extractContractAddresses(ipfsData: String): Array<String> {
     
     log.debug("Address '{}' extracted",[addressIso])
     res.push(stripQuotes(addressIso))
+    
+    if(nameIso.length > 0) {
+      let contract = createOrLoadContract(addressIso)
+      contract.name = nameIso
+      contract.save()
+      
+      // Let's isolate contract events while we're here.
+      
+    }
   }
   
   return res as Array<String>
@@ -123,15 +202,74 @@ export function processManifest(subgraph: Subgraph, subgraphDeploymentID: String
 export function handleSubgraphPublishedV2(event: SubgraphPublished1): void {
   let bigIntID = event.params.subgraphID
   let subgraph = createOrLoadSubgraph(bigIntID)
+  subgraph.createdAt = event.block.timestamp.toI32()
+  if(event.block.timestamp.toI32() > subgraph.updatedAt) {
+    subgraph.updatedAt = event.block.timestamp.toI32()
+  }
   let subgraphDeploymentID = event.params.subgraphDeploymentID.toHexString()
+  
   processManifest(subgraph,subgraphDeploymentID)
+
+  let versionNumber = subgraph.versionCount
+  let versionID = joinID([subgraph.id, subgraph.versionCount.toString()])
+  subgraph.currentVersion = versionID
+  subgraph.versionCount = subgraph.versionCount.plus(BigInt.fromI32(1))
+  subgraph.updatedAt = event.block.timestamp.toI32()
+  
+  subgraph.save()
+
+  // Create subgraph deployment, if needed. Can happen if the deployment has never been staked on
+  let deployment = createOrLoadSubgraphDeployment(subgraphDeploymentID, event.block.timestamp)
+
+  // Create subgraph version
+  let subgraphVersion = new SubgraphVersion(versionID)
+  subgraphVersion.subgraph = subgraph.id
+  subgraphVersion.subgraphDeployment = subgraphDeploymentID
+  subgraphVersion.version = versionNumber.toI32()
+  subgraphVersion.createdAt = event.block.timestamp.toI32()
+  subgraphVersion.save()
 }
 
 export function handleSubgraphPublished(event: SubgraphPublished): void {
   let bigIntID = getSubgraphID(event.params.graphAccount, event.params.subgraphNumber)
   let subgraph = createOrLoadSubgraph(bigIntID)
+  subgraph.createdAt = event.block.timestamp.toI32()
+  if(event.block.timestamp.toI32() > subgraph.updatedAt) {
+    subgraph.updatedAt = event.block.timestamp.toI32()
+  }
   let subgraphDeploymentID = event.params.subgraphDeploymentID.toHexString()
+  
+  
   processManifest(subgraph,subgraphDeploymentID)  
+  let subgraphID = getSubgraphID(event.params.graphAccount, event.params.subgraphNumber)
+
+  // Update subgraph
+  // Create subgraph
+  let oldVersionID = subgraph.currentVersion
+
+  let versionNumber = subgraph.versionCount
+  let versionIDNew = joinID([subgraph.id, subgraph.versionCount.toString()])
+
+  subgraph.currentVersion = versionIDNew
+  subgraph.save()
+
+  let graphAccount = createOrLoadGraphAccount(event.params.graphAccount)
+  subgraph.owner = graphAccount.id
+
+  // Create subgraph deployment, if needed. Can happen if the deployment has never been staked on
+  let deployment = createOrLoadSubgraphDeployment(subgraphDeploymentID, event.block.timestamp)
+
+  // Create subgraph version
+  let subgraphVersion = new SubgraphVersion(versionIDNew)
+  subgraphVersion.subgraph = subgraph.id
+  subgraphVersion.subgraphDeployment = subgraphDeploymentID
+  subgraphVersion.version = versionNumber.toI32()
+  subgraphVersion.createdAt = event.block.timestamp.toI32()
+  let hexHash = changetype<Bytes>(addQm(event.params.versionMetadata))
+  let base58Hash = hexHash.toBase58()
+  subgraphVersion.metadataHash = event.params.versionMetadata
+  subgraphVersion = fetchSubgraphVersionMetadata(subgraphVersion, base58Hash)
+  subgraphVersion.save()
 }
 
 // - event: SubgraphDeprecated(indexed uint256,uint256)
@@ -161,6 +299,30 @@ export function handleSubgraphVersionUpdated(event: SubgraphVersionUpdated): voi
   let bigIntID = event.params.subgraphID
   let subgraph = createOrLoadSubgraph(bigIntID)
   let subgraphDeploymentID = event.params.subgraphDeploymentID.toHexString()
+  if(event.block.timestamp.toI32() > subgraph.updatedAt) {
+    subgraph.updatedAt = event.block.timestamp.toI32()
+  }
+
+  let deployment = createOrLoadSubgraphDeployment(subgraphDeploymentID, event.block.timestamp)
+  
+  let versionIDNew = joinID([subgraph.id, subgraph.versionCount.toString()])
+  let subgraphVersion = new SubgraphVersion(versionIDNew)
+  subgraphVersion.version = subgraph.versionCount.toI32()
+  subgraphVersion.createdAt = event.block.timestamp.toI32()
+  subgraphVersion.subgraph = subgraph.id
+  subgraphVersion.subgraphDeployment = deployment.id
+  
+  let hexHash = changetype<Bytes>(addQm(event.params.versionMetadata))
+  let base58Hash = hexHash.toBase58()
+  subgraphVersion.metadataHash = event.params.versionMetadata
+  subgraphVersion = fetchSubgraphVersionMetadata(subgraphVersion, base58Hash)
+  
+  subgraphVersion.save()
+  
+  
+  subgraph.versionCount = subgraph.versionCount.plus(BigInt.fromI32(1))
+  subgraph.currentVersion = versionIDNew
+  subgraph.save()
   processManifest(subgraph,subgraphDeploymentID)
 }
 
@@ -168,8 +330,76 @@ export function handleSubgraphVersionUpdated(event: SubgraphVersionUpdated): voi
 //   handler: handleSubgraphMetadataUpdatedV2
 
 export function handleSubgraphMetadataUpdatedV2(event: SubgraphMetadataUpdated1): void {
+  let bigIntID = event.params.subgraphID
+  let subgraphID = convertBigIntSubgraphIDToBase58(bigIntID)
+  let subgraph = Subgraph.load(subgraphID)!
+
+  let hexHash = changetype<Bytes>(addQm(event.params.subgraphMetadata))
+  let base58Hash = hexHash.toBase58()
+
+  subgraph.metadataHash = event.params.subgraphMetadata
+  subgraph.ipfsMetadataHash = addQm(subgraph.metadataHash).toBase58()
+  subgraph = fetchSubgraphMetadata(subgraph, base58Hash)
+  subgraph.updatedAt = event.block.timestamp.toI32()
+  subgraph.save()
+
+  // Add the original subgraph name to the subgraph deployment
+  // This is a temporary solution until we can filter on nested queries
+  let subgraphVersion = SubgraphVersion.load(subgraph.currentVersion!)!
+  let subgraphDeployment = SubgraphDeployment.load(subgraphVersion.subgraphDeployment)!
+  // Not super robust, someone could deploy blank, then point a subgraph to here
+  // It is more appropriate to say this is the first name 'claimed' for the deployment
+  if (subgraphDeployment.originalName == null) {
+    subgraphDeployment.originalName = subgraph.displayName
+    subgraphDeployment.save()
+  }
 }
 
 export function handleSubgraphMetadataUpdated(event: SubgraphMetadataUpdated): void {
+  let subgraphID = getSubgraphID(event.params.graphAccount, event.params.subgraphNumber)
+
+  // Create subgraph
+  let subgraph = createOrLoadSubgraph(subgraphID)
+
+  let hexHash = changetype<Bytes>(addQm(event.params.subgraphMetadata))
+  let base58Hash = hexHash.toBase58()
+
+  subgraph.metadataHash = event.params.subgraphMetadata
+  subgraph.ipfsMetadataHash = addQm(subgraph.metadataHash).toBase58()
+  subgraph = fetchSubgraphMetadata(subgraph, base58Hash)
+  subgraph.updatedAt = event.block.timestamp.toI32()
+  subgraph.save()
+
+    // Add the original subgraph name to the subgraph deployment
+  // This is a temporary solution until we can filter on nested queries
+  let subgraphVersion = SubgraphVersion.load(subgraph.currentVersion!)!
+  let subgraphDeployment = SubgraphDeployment.load(subgraphVersion.subgraphDeployment)!
+  // Not super robust, someone could deploy blank, then point a subgraph to here
+  // It is more appropriate to say this is the first name 'claimed' for the deployment
+  if (subgraphDeployment.originalName == null) {
+    subgraphDeployment.originalName = subgraph.displayName
+    subgraphDeployment.save()
+  }
 }
 
+export function handleSubgraphUpgraded(event: SubgraphUpgraded): void {
+  let bigIntID = event.params.subgraphID
+  let subgraph = createOrLoadSubgraph(bigIntID)
+  let subgraphDeploymentID = event.params.subgraphDeploymentID.toHexString()
+  processManifest(subgraph,subgraphDeploymentID)
+}
+
+// - event: Transfer(indexed address,indexed address,indexed uint256)
+//   handler: handleTransfer
+
+export function handleTransfer(event: Transfer): void {
+  let newOwner = createOrLoadGraphAccount(event.params.to)
+
+  // Update subgraph v2
+  let subgraph = createOrLoadSubgraph(
+    event.params.tokenId
+  )
+  subgraph.updatedAt = event.block.timestamp.toI32()
+  subgraph.owner = newOwner.id
+  subgraph.save()
+}

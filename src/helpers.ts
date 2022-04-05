@@ -1,8 +1,11 @@
-import { BigInt, ByteArray, Address, Bytes, crypto, log, BigDecimal } from '@graphprotocol/graph-ts'
+import { BigInt, ByteArray, Address, Bytes, crypto, log, BigDecimal, ipfs, json, JSONValue, JSONValueKind } from '@graphprotocol/graph-ts'
 import {
 Contract,
 Subgraph,
-SubgraphDeployment
+GraphAccount,
+SubgraphDeployment,
+SubgraphVersion,
+Network
 } from './types/schema'
 
 export function convertBigIntSubgraphIDToBase58(bigIntRepresentation: BigInt): String {
@@ -20,12 +23,24 @@ export function convertBigIntSubgraphIDToBase58(bigIntRepresentation: BigInt): S
   return bytes.toBase58()
 }
 
+export function createOrLoadGraphAccount(graphAccountID: Bytes): GraphAccount {
+  let id = graphAccountID.toHexString()
+  let graphAccount = GraphAccount.load(id)
+  if(graphAccount == null) {
+    graphAccount = new GraphAccount(id)
+    graphAccount.save()
+  }
+  return graphAccount as GraphAccount
+}
+
 export function createOrLoadSubgraph(bigIntID: BigInt): Subgraph {
   let subgraphID = convertBigIntSubgraphIDToBase58(bigIntID)
   let subgraph = Subgraph.load(subgraphID)
   if(subgraph == null) {
     subgraph = new Subgraph(subgraphID)
     subgraph.active = true
+    subgraph.versionCount = BigInt.fromI32(0)
+//    subgraph.metadataHash = new Array<Bytes>()
     subgraph.save()
   }
   return subgraph as Subgraph
@@ -58,4 +73,129 @@ export function getSubgraphID(graphAccount: Address, subgraphNumber: BigInt): Bi
   let hashedId = Bytes.fromByteArray(crypto.keccak256(ByteArray.fromHexString(unhashedSubgraphID)))
   let bigIntRepresentation = BigInt.fromUnsignedBytes(changetype<Bytes>(hashedId.reverse()))
   return bigIntRepresentation
+}
+
+export function joinID(pieces: Array<string>): string {
+  return pieces.join('-')
+}
+
+export function jsonToString(val: JSONValue | null): string {
+  if (val != null && val.kind === JSONValueKind.STRING) {
+    return val.toString()
+  }
+  return ''
+}
+
+export function fetchSubgraphMetadata(subgraph: Subgraph, ipfsHash: string): Subgraph {
+  let metadata = ipfs.cat(ipfsHash)
+  if (metadata !== null) {
+    let tryData = json.try_fromBytes(metadata as Bytes)
+    if (tryData.isOk) {
+      let data = tryData.value.toObject()
+      subgraph.description = jsonToString(data.get('description'))
+      subgraph.displayName = jsonToString(data.get('displayName'))
+      subgraph.codeRepository = jsonToString(data.get('codeRepository'))
+      subgraph.website = jsonToString(data.get('website'))
+/* TODO - V2
+      let categories = data.get('categories')
+
+      if(categories != null && !categories.isNull()) {
+        let categoriesArray = categories.toArray()
+
+        for(let i = 0; i < categoriesArray.length; i++) {
+          let categoryId = jsonToString(categoriesArray[i])
+          createOrLoadSubgraphCategory(categoryId)
+          createOrLoadSubgraphCategoryRelation(categoryId, subgraph.id)
+          if(subgraph.linkedEntity != null) {
+            createOrLoadSubgraphCategoryRelation(categoryId, subgraph.linkedEntity!)
+          }
+        }
+      }
+*/
+      let image = jsonToString(data.get('image'))
+      let subgraphImage = data.get('subgraphImage')
+      if (subgraphImage != null && subgraphImage.kind === JSONValueKind.STRING)  {
+        //subgraph.nftImage = image
+        subgraph.image = jsonToString(subgraphImage)
+      } else {
+        subgraph.image = image
+      }
+    }
+  }
+  return subgraph
+}
+
+export function fetchSubgraphVersionMetadata(subgraphVersion: SubgraphVersion, ipfsHash: string): SubgraphVersion {
+  let getVersionDataFromIPFS = ipfs.cat(ipfsHash)
+  if (getVersionDataFromIPFS !== null) {
+    let tryData = json.try_fromBytes(getVersionDataFromIPFS as Bytes)
+    if (tryData.isOk) {
+      let data = tryData.value.toObject()
+      subgraphVersion.description = jsonToString(data.get('description'))
+      subgraphVersion.label = jsonToString(data.get('label'))
+    } else {
+      subgraphVersion.description = ''
+      subgraphVersion.label = ''
+    }
+  }
+  return subgraphVersion
+}
+
+export function createOrLoadNetwork(id: string): Network {
+  let network = Network.load(id)
+  if (network == null) {
+    network = new Network(id)
+    network.save()
+  }
+  return network as Network
+}
+
+export function fetchSubgraphDeploymentManifest(deployment: SubgraphDeployment, ipfsHash: string): SubgraphDeployment {
+  let getManifestFromIPFS = ipfs.cat(ipfsHash)
+  if (getManifestFromIPFS !== null) {
+    deployment.manifest = getManifestFromIPFS.toString()
+
+    let manifest = deployment.manifest!
+    // we take the right side of the split, since it's the one which will have the schema ipfs hash
+    let schemaSplit = manifest.split('schema:\n', 2)[1]
+    let schemaFileSplit = schemaSplit.split('/ipfs/', 2)[1]
+    let schemaIpfsHash = schemaFileSplit.split('\n', 2)[0]
+    deployment.schemaIpfsHash = schemaIpfsHash
+
+    let getSchemaFromIPFS = ipfs.cat(schemaIpfsHash)
+    if (getSchemaFromIPFS !== null) {
+      deployment.schema = getSchemaFromIPFS.toString()
+    }
+
+    // We get the first occurrence of `network` since subgraphs can only have data sources for the same network
+    let networkSplit = manifest.split('network: ', 2)[1]
+    let network = networkSplit.split('\n', 2)[0]
+
+    createOrLoadNetwork(network)
+    deployment.network = network
+  }
+  return deployment as SubgraphDeployment
+}
+
+export function createOrLoadSubgraphDeployment(
+  subgraphID: string,
+  timestamp: BigInt,
+): SubgraphDeployment {
+  let deployment = SubgraphDeployment.load(subgraphID)
+  if (deployment == null) {
+    let prefix = '1220'
+    deployment = new SubgraphDeployment(subgraphID)
+    deployment.ipfsHash = Bytes.fromHexString(prefix.concat(subgraphID.slice(2))).toBase58()
+    deployment = fetchSubgraphDeploymentManifest(
+      deployment as SubgraphDeployment,
+      deployment.ipfsHash,
+    )
+    deployment.createdAt = timestamp.toI32()
+
+//    deployment.subgraphCount = 0
+//    deployment.activeSubgraphCount = 0
+//    deployment.deprecatedSubgraphCount = 0
+    deployment.save()
+  }
+  return deployment as SubgraphDeployment
 }
