@@ -1,5 +1,7 @@
 /*
 # TODO refactor - use classes/models to reduce redundant logic generating and updating entities
+
+# Manual sanity test:
 {
   subgraphs(first:5,orderBy:createdAt,orderDirection:desc) {
     id
@@ -67,7 +69,8 @@ import {
   fetchSubgraphMetadata,
   fetchSubgraphVersionMetadata,
   fetchSubgraphDeploymentManifest,
-  createOrLoadNetwork
+  createOrLoadNetwork,
+  createOrLoadContractEvent
 } from './helpers'
 
 /*
@@ -97,7 +100,54 @@ export function stripQuotes(str: String): String {
   return res as String
 }
 
+export function formatEvent(str: String): String {
+  let res = ''
+  let pass = ''
+  // Strip Quotes - TODO breakout into function common to stripQuotes()
+  let remove = ['\'','"']
+  for(let i = 0; i < str.length; i++) {
+    if(!remove.includes(str[i])) pass = pass.concat(str[i])
+  }
+  // Newline handling
+  pass = pass.replaceAll('\r',' ')
+  pass = pass.replaceAll('\n',' ')
+  pass = pass.replaceAll('>-',' ')
+  // Space handling
+  log.debug("Finalizing cleanup of '{}'",[pass])
+  let last = ' '
+  for(let i = 0; i < pass.length; i++) {
+    if(pass[i] == ' ' && last == ' ') {
+      continue
+    } else {
+      res = res.concat(pass[i])
+    }
+    last = pass[i]
+  }
+  res = res.trim()
+  
+  return res as String
+}
+
+export function extractContractEvents(kind: String, contract: Contract): void {
+  let eventHandlersSplit = kind.split("eventHandlers:",2)
+  let eventHandlersStr = ''
+  if(eventHandlersSplit.length >= 2) {
+    eventHandlersStr = eventHandlersSplit[1]
+  }
+  log.debug("Splitting event from '{}'",[eventHandlersStr])
+  let eventSplit = eventHandlersStr.split("- event:")
+  for(let i = 1; i < eventSplit.length; i++) {
+    log.debug("Isolating event from '{}'",[eventSplit[i]])
+    let sanitizeSplit = eventSplit[i].split("handler:",2)
+    let eventIso = formatEvent(sanitizeSplit[0])
+    log.debug("Contract event isolated: '{}'",[eventIso])
+    let contractEvent = createOrLoadContractEvent(contract.id,eventIso)
+  }
+}
+
 export function extractContractAddresses(ipfsData: String): Array<String> {
+  // Critical TODO: YAML parser.
+  
   let res = new Array<String>(0)
   // Use split() until a suitable YAML parser is found.  Approach was used in graph-network-subgraph.
   log.debug("Splitting dataSources",[])
@@ -135,10 +185,10 @@ export function extractContractAddresses(ipfsData: String): Array<String> {
   let addressStr = ''
   let addressIso = ''
 
-  let nameIso = ''
+//  let nameIso = ''
   
   for(let i = 1; i < kindSplit.length; i++) {
-    nameIso = ''
+//    nameIso = ''
     addressIso = ''
         
     // Source Address
@@ -159,15 +209,18 @@ export function extractContractAddresses(ipfsData: String): Array<String> {
     
     log.debug("Address '{}' extracted",[addressIso])
     res.push(stripQuotes(addressIso))
-    
+
+    // Let's isolate contract events while we're here.
+    let contract = createOrLoadContract(stripQuotes(addressIso))
+    log.debug("Splitting eventHandler from '{}'",[kindSplit[i]]);
+    extractContractEvents(kindSplit[i],contract)
+/*    
     if(nameIso.length > 0) {
-      let contract = createOrLoadContract(addressIso)
       contract.name = nameIso
       contract.save()
       
-      // Let's isolate contract events while we're here.
-      
     }
+*/
   }
   
   return res as Array<String>
@@ -186,14 +239,15 @@ export function processManifest(subgraph: Subgraph, subgraphDeploymentID: String
     let contractAddresses = extractContractAddresses(ipfsData.toString())
     let address = ''
     for(let i = 0; i < contractAddresses.length; i++) {
+      let deployment = createOrLoadSubgraphDeployment(subgraphDeploymentID)
       address = contractAddresses[i]
       log.debug("Associating address '{}'",[address])
       let contract = createOrLoadContract(address)
-      let assoc = subgraph.contract
+      let assoc = deployment.contract
       if(assoc.indexOf(address) == -1) {
         assoc.push(address)
-        subgraph.contract = assoc
-        subgraph.save()
+        deployment.contract = assoc
+        deployment.save()
       }
     }
   }
@@ -219,7 +273,9 @@ export function handleSubgraphPublishedV2(event: SubgraphPublished1): void {
   subgraph.save()
 
   // Create subgraph deployment, if needed. Can happen if the deployment has never been staked on
-  let deployment = createOrLoadSubgraphDeployment(subgraphDeploymentID, event.block.timestamp)
+  let deployment = createOrLoadSubgraphDeployment(subgraphDeploymentID)
+  deployment.createdAt = event.block.timestamp.toI32()
+  deployment.save()
 
   // Create subgraph version
   let subgraphVersion = new SubgraphVersion(versionID)
@@ -257,7 +313,9 @@ export function handleSubgraphPublished(event: SubgraphPublished): void {
   subgraph.owner = graphAccount.id
 
   // Create subgraph deployment, if needed. Can happen if the deployment has never been staked on
-  let deployment = createOrLoadSubgraphDeployment(subgraphDeploymentID, event.block.timestamp)
+  let deployment = createOrLoadSubgraphDeployment(subgraphDeploymentID)
+  deployment.createdAt = event.block.timestamp.toI32()
+  deployment.save()
 
   // Create subgraph version
   let subgraphVersion = new SubgraphVersion(versionIDNew)
@@ -303,7 +361,9 @@ export function handleSubgraphVersionUpdated(event: SubgraphVersionUpdated): voi
     subgraph.updatedAt = event.block.timestamp.toI32()
   }
 
-  let deployment = createOrLoadSubgraphDeployment(subgraphDeploymentID, event.block.timestamp)
+  let deployment = createOrLoadSubgraphDeployment(subgraphDeploymentID)
+  deployment.createdAt = event.block.timestamp.toI32()
+  deployment.save()
   
   let versionIDNew = joinID([subgraph.id, subgraph.versionCount.toString()])
   let subgraphVersion = new SubgraphVersion(versionIDNew)

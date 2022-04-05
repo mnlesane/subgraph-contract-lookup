@@ -5,7 +5,8 @@ Subgraph,
 GraphAccount,
 SubgraphDeployment,
 SubgraphVersion,
-Network
+Network,
+ContractEvent
 } from './types/schema'
 
 export function convertBigIntSubgraphIDToBase58(bigIntRepresentation: BigInt): String {
@@ -40,7 +41,6 @@ export function createOrLoadSubgraph(bigIntID: BigInt): Subgraph {
     subgraph = new Subgraph(subgraphID)
     subgraph.active = true
     subgraph.versionCount = BigInt.fromI32(0)
-//    subgraph.metadataHash = new Array<Bytes>()
     subgraph.save()
   }
   return subgraph as Subgraph
@@ -53,6 +53,18 @@ export function createOrLoadContract(contractID: String): Contract {
     contract.save()
   }
   return contract as Contract
+}
+
+export function createOrLoadContractEvent(contractID: String,event: String): ContractEvent {
+// TODO This could really benefit from the use of name mangling, if possible.  There might be contract event redundancies without it.
+  let contractEvent = ContractEvent.load(joinID([contractID,event]))
+  if(contractEvent == null) {
+    contractEvent = new ContractEvent(joinID([contractID,event]))
+  }
+  contractEvent.contract = contractID
+  contractEvent.event = event
+  contractEvent.save()
+  return contractEvent as ContractEvent
 }
 
 export function addQm(a: ByteArray): ByteArray {
@@ -178,8 +190,7 @@ export function fetchSubgraphDeploymentManifest(deployment: SubgraphDeployment, 
 }
 
 export function createOrLoadSubgraphDeployment(
-  subgraphID: string,
-  timestamp: BigInt,
+  subgraphID: string
 ): SubgraphDeployment {
   let deployment = SubgraphDeployment.load(subgraphID)
   if (deployment == null) {
@@ -190,7 +201,6 @@ export function createOrLoadSubgraphDeployment(
       deployment as SubgraphDeployment,
       deployment.ipfsHash,
     )
-    deployment.createdAt = timestamp.toI32()
 
 //    deployment.subgraphCount = 0
 //    deployment.activeSubgraphCount = 0

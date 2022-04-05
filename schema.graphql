@@ -1,7 +1,8 @@
 type ContractEvent @entity {
 
   id: ID!
-  contract: Contract! @derivedFrom(field: "contractEvent")
+  event: String
+  contract: Contract!
 }
 
 type Contract @entity {
@@ -9,15 +10,14 @@ type Contract @entity {
   id: ID!
   name: String
   # Mainnet Subgraph
-  subgraph: [Subgraph!]! @derivedFrom(field: "contract")
+  subgraphDeployment: [SubgraphDeployment!]! @derivedFrom(field: "contract")
   
-  contractEvent: [ContractEvent!]!
+  contractEvent: [ContractEvent!]! @derivedFrom(field: "contract")
 }
 
 type Subgraph @entity {
   id: ID!
   active: Boolean!
-  contract: [Contract!]!
   
   owner: GraphAccount!
   createdAt: Int!
@@ -52,6 +52,7 @@ type SubgraphDeployment @entity {
   network: Network!
   schema: String
   schemaIpfsHash: String
+  contract: [Contract!]!
 }
 
 type Network @entity {
@@ -69,6 +70,5 @@ type SubgraphVersion @entity {
   createdAt: Int!
   metadataHash: Bytes
   description: String
-  contractEvent: [ContractEvent!]!
   label: String
 }
