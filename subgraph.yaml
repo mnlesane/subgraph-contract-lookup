@@ -39,3 +39,26 @@ dataSources:
         - event: 'SubgraphUpgraded(indexed uint256,uint256,uint256,indexed bytes32)'
           handler: handleSubgraphUpgraded
       file: ./src/mapping.ts
+  - kind: ethereum/contract
+    mapping:
+      abis:
+        - name: SubgraphNFT
+          file: ./abis/SubgraphNFT.json
+      apiVersion: 0.0.5
+      entities:
+        - Subgraph
+        - SubgraphVersion
+        - SubgraphDeployment
+        - GraphAccount
+      eventHandlers:
+        - event: 'Transfer(indexed address,indexed address,indexed uint256)'
+          handler: handleTransfer
+      file: ./src/mapping.ts
+      kind: ethereum/events
+      language: wasm/assemblyscript
+    name: SubgraphNFT
+    network: mainnet
+    source:
+      abi: SubgraphNFT
+      address: '0x24e36639b3A3aaA9c928a8A6f12d34F942f1ab67'
+      startBlock: 11440000
