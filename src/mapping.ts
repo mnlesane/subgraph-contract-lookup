@@ -22,16 +22,27 @@
         ipfsHash
         createdAt
         originalName
-        manifest
+#        manifest
         network {
           id
         }
-        schema
+#        schema
         schemaIpfsHash
+        contract {
+          id
+          contractEvent {
+            event
+          }
+        }
       }
     }
   }
 }
+
+TODO V2:
+* ENS integration
+* Entity v1 vs v2 Reconciliation
+* Signal
 */
 import { BigDecimal, BigInt, Bytes, ipfs, json, log } from '@graphprotocol/graph-ts'
 
@@ -256,12 +267,12 @@ export function processManifest(subgraph: Subgraph, subgraphDeploymentID: String
 export function handleSubgraphPublishedV2(event: SubgraphPublished1): void {
   let bigIntID = event.params.subgraphID
   let subgraph = createOrLoadSubgraph(bigIntID)
+  subgraph.owner = event.transaction.from.toHexString()
   subgraph.createdAt = event.block.timestamp.toI32()
   if(event.block.timestamp.toI32() > subgraph.updatedAt) {
     subgraph.updatedAt = event.block.timestamp.toI32()
   }
   let subgraphDeploymentID = event.params.subgraphDeploymentID.toHexString()
-  
   processManifest(subgraph,subgraphDeploymentID)
 
   let versionNumber = subgraph.versionCount
@@ -275,6 +286,7 @@ export function handleSubgraphPublishedV2(event: SubgraphPublished1): void {
   // Create subgraph deployment, if needed. Can happen if the deployment has never been staked on
   let deployment = createOrLoadSubgraphDeployment(subgraphDeploymentID)
   deployment.createdAt = event.block.timestamp.toI32()
+  deployment.subgraph = subgraph.id
   deployment.save()
 
   // Create subgraph version
@@ -287,8 +299,8 @@ export function handleSubgraphPublishedV2(event: SubgraphPublished1): void {
 }
 
 export function handleSubgraphPublished(event: SubgraphPublished): void {
-  let bigIntID = getSubgraphID(event.params.graphAccount, event.params.subgraphNumber)
-  let subgraph = createOrLoadSubgraph(bigIntID)
+  let subgraphID = getSubgraphID(event.params.graphAccount, event.params.subgraphNumber)
+  let subgraph = createOrLoadSubgraph(subgraphID)
   subgraph.createdAt = event.block.timestamp.toI32()
   if(event.block.timestamp.toI32() > subgraph.updatedAt) {
     subgraph.updatedAt = event.block.timestamp.toI32()
@@ -297,7 +309,6 @@ export function handleSubgraphPublished(event: SubgraphPublished): void {
   
   
   processManifest(subgraph,subgraphDeploymentID)  
-  let subgraphID = getSubgraphID(event.params.graphAccount, event.params.subgraphNumber)
 
   // Update subgraph
   // Create subgraph
@@ -315,6 +326,7 @@ export function handleSubgraphPublished(event: SubgraphPublished): void {
   // Create subgraph deployment, if needed. Can happen if the deployment has never been staked on
   let deployment = createOrLoadSubgraphDeployment(subgraphDeploymentID)
   deployment.createdAt = event.block.timestamp.toI32()
+  deployment.subgraph = subgraph.id
   deployment.save()
 
   // Create subgraph version
@@ -363,6 +375,7 @@ export function handleSubgraphVersionUpdated(event: SubgraphVersionUpdated): voi
 
   let deployment = createOrLoadSubgraphDeployment(subgraphDeploymentID)
   deployment.createdAt = event.block.timestamp.toI32()
+  deployment.subgraph = subgraph.id
   deployment.save()
   
   let versionIDNew = joinID([subgraph.id, subgraph.versionCount.toString()])

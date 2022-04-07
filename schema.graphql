@@ -45,7 +45,10 @@ type SubgraphDeployment @entity {
 
   id: ID!
   ipfsHash: String!
-  versions: [SubgraphVersion!]! @derivedFrom(field: "subgraphDeployment")
+  
+  subgraphVersion: SubgraphVersion! @derivedFrom(field:"subgraphDeployment")
+  subgraph: Subgraph!
+  
   createdAt: Int!
   originalName: String
   manifest: String
@@ -72,3 +75,38 @@ type SubgraphVersion @entity {
   description: String
   label: String
 }
+
+"""
+Full test search
+"""
+type _Schema_
+  @fulltext(
+    name: "contractEventSearch"
+    language: en
+    algorithm: rank
+    include: [{ entity: "ContractEvent", fields: [{ name: "event" }] }]
+  )
+  @fulltext(
+    name: "contractSearch"
+    language: en
+    algorithm: rank
+    include: [{ entity: "Contract", fields: [{ name: "id" }] }]
+  )
+  @fulltext(
+    name: "subgraphSearch"
+    language: en
+    algorithm: rank
+    include: [{ entity: "Subgraph", fields: [{ name: "displayName" }, { name: "description" }, { name: "codeRepository"}, { name: "website" }] }]
+  )
+  @fulltext(
+    name: "graphAccountSearch"
+    language: en
+    algorithm: rank
+    include: [{ entity: "GraphAccount", fields: [{ name: "id" }] }]
+  )
+  @fulltext(
+    name: "subgraphDeploymentSearch"
+    language: en
+    algorithm: rank
+    include: [{ entity: "SubgraphDeployment", fields: [{ name: "originalName" }] }]
+  )
