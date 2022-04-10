@@ -32,6 +32,10 @@ type Subgraph @entity {
   metadataHash: Bytes!
   ipfsMetadataHash: String
   currentVersion: SubgraphVersion
+
+  signalledTokens: BigInt!
+  unsignalledTokens: BigInt!
+  currentSignalledTokens: BigInt!
 }
 
 type GraphAccount @entity {
@@ -46,7 +50,7 @@ type SubgraphDeployment @entity {
   id: ID!
   ipfsHash: String!
   
-  subgraphVersion: SubgraphVersion! @derivedFrom(field:"subgraphDeployment")
+  versions: [SubgraphVersion!]! @derivedFrom(field: "subgraphDeployment")
   subgraph: Subgraph!
   
   createdAt: Int!

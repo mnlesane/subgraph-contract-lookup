@@ -40,7 +40,11 @@ export function createOrLoadSubgraph(bigIntID: BigInt): Subgraph {
   if(subgraph == null) {
     subgraph = new Subgraph(subgraphID)
     subgraph.active = true
+    subgraph.owner = ""
     subgraph.versionCount = BigInt.fromI32(0)
+    subgraph.signalledTokens = BigInt.fromI32(0)
+    subgraph.unsignalledTokens = BigInt.fromI32(0)
+    subgraph.currentSignalledTokens = BigInt.fromI32(0)
     subgraph.save()
   }
   return subgraph as Subgraph
@@ -187,6 +191,24 @@ export function fetchSubgraphDeploymentManifest(deployment: SubgraphDeployment, 
     deployment.network = network
   }
   return deployment as SubgraphDeployment
+}
+
+export function createOrLoadSubgraphVersion(subgraph: Subgraph, deployment: SubgraphDeployment): SubgraphVersion {
+  let versionID = joinID([subgraph.id, subgraph.versionCount.toString()])
+  subgraph.currentVersion = versionID
+  subgraph.versionCount = subgraph.versionCount.plus(BigInt.fromI32(1))
+  subgraph.save()
+  
+  let subgraphVersion = SubgraphVersion.load(versionID)
+  if(subgraphVersion == null) {
+    subgraphVersion = new SubgraphVersion(versionID)
+  }
+  subgraphVersion.subgraph = subgraph.id
+  subgraphVersion.subgraphDeployment = deployment.id
+  let versionNumber = subgraph.versionCount
+  subgraphVersion.version = versionNumber.toI32()
+  subgraphVersion.save()
+  return subgraphVersion as SubgraphVersion
 }
 
 export function createOrLoadSubgraphDeployment(
