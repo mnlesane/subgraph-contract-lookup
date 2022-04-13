@@ -6,7 +6,8 @@ GraphAccount,
 SubgraphDeployment,
 SubgraphVersion,
 Network,
-ContractEvent
+ContractEvent,
+CurrentSubgraphDeploymentRelation
 } from './types/schema'
 
 export function convertBigIntSubgraphIDToBase58(bigIntRepresentation: BigInt): String {
@@ -41,6 +42,7 @@ export function createOrLoadSubgraph(bigIntID: BigInt): Subgraph {
     subgraph = new Subgraph(subgraphID)
     subgraph.active = true
     subgraph.owner = ""
+    subgraph.entityVersion = 2
     subgraph.versionCount = BigInt.fromI32(0)
     subgraph.signalledTokens = BigInt.fromI32(0)
     subgraph.unsignalledTokens = BigInt.fromI32(0)
@@ -224,10 +226,92 @@ export function createOrLoadSubgraphDeployment(
       deployment.ipfsHash,
     )
 
-//    deployment.subgraphCount = 0
-//    deployment.activeSubgraphCount = 0
-//    deployment.deprecatedSubgraphCount = 0
+    deployment.subgraphCount = 0
+    deployment.activeSubgraphCount = 0
+    deployment.deprecatedSubgraphCount = 0
     deployment.save()
   }
   return deployment as SubgraphDeployment
+}
+
+export function duplicateOrUpdateSubgraphWithNewID(entity: Subgraph, newID: String, newEntityVersion: i32): Subgraph {
+  let subgraph = Subgraph.load(newID)
+  if (subgraph == null) {
+    subgraph = new Subgraph(newID)
+  }
+  subgraph.owner = entity.owner
+  //subgraph.currentVersion = entity.currentVersion // currentVersion will have to be updated to be the duplicated SubgraphVersion entity afterwards
+  subgraph.versionCount = entity.versionCount
+  subgraph.createdAt = entity.createdAt
+  subgraph.updatedAt = entity.updatedAt
+  subgraph.active = entity.active
+  subgraph.signalledTokens = entity.signalledTokens
+  subgraph.unsignalledTokens = entity.unsignalledTokens
+  subgraph.currentSignalledTokens = entity.currentSignalledTokens
+  subgraph.metadataHash = entity.metadataHash
+  subgraph.ipfsMetadataHash = entity.ipfsMetadataHash
+  subgraph.description = entity.description
+  subgraph.image = entity.image
+  subgraph.codeRepository = entity.codeRepository
+  subgraph.website = entity.website
+  subgraph.displayName = entity.displayName
+  subgraph.linkedEntity = entity.id // this is the entity id, since for the entity, this value will be this particular entity.
+  return subgraph as Subgraph
+}
+
+export function duplicateOrUpdateSubgraphVersionWithNewID(entity: SubgraphVersion, newID: String, newEntityVersion: i32): SubgraphVersion {
+  let version = SubgraphVersion.load(newID)
+  if (version == null) {
+    version = new SubgraphVersion(newID)
+  }
+  version.subgraphDeployment = entity.subgraphDeployment
+  version.version = entity.version
+  version.createdAt = entity.createdAt
+  version.metadataHash = entity.metadataHash
+  version.description = entity.description
+  version.label = entity.label
+  version.linkedEntity = entity.id
+  return version as SubgraphVersion
+}
+
+export function updateCurrentDeploymentLinks(
+  oldDeployment: SubgraphDeployment | null,
+  newDeployment: SubgraphDeployment | null,
+  subgraph: Subgraph,
+  deprecated: boolean = false,
+): void {
+  if (oldDeployment != null) {
+    if (!deprecated) {
+      let oldRelationEntity = CurrentSubgraphDeploymentRelation.load(
+        subgraph.currentVersionRelationEntity!,
+      )!
+      oldRelationEntity.active = false
+      oldRelationEntity.save()
+    }
+
+    oldDeployment.activeSubgraphCount = oldDeployment.activeSubgraphCount - 1
+    if (deprecated) {
+      oldDeployment.deprecatedSubgraphCount = oldDeployment.deprecatedSubgraphCount + 1
+    }
+    oldDeployment.save()
+  }
+
+  if (newDeployment != null) {
+    let newRelationID = newDeployment.id
+      .concat('-')
+      .concat(BigInt.fromI32(newDeployment.subgraphCount).toString())
+    let newRelationEntity = new CurrentSubgraphDeploymentRelation(newRelationID)
+    newRelationEntity.deployment = newDeployment.id
+    newRelationEntity.subgraph = subgraph.id
+    newRelationEntity.active = true
+    newRelationEntity.save()
+
+    newDeployment.subgraphCount = newDeployment.subgraphCount + 1
+    newDeployment.activeSubgraphCount = newDeployment.activeSubgraphCount + 1
+    newDeployment.save()
+
+    subgraph.currentVersionRelationEntity = newRelationEntity.id
+    subgraph.currentSignalledTokens = newDeployment.signalledTokens
+    subgraph.save()
+  }
 }

@@ -36,7 +36,22 @@ type Subgraph @entity {
   signalledTokens: BigInt!
   unsignalledTokens: BigInt!
   currentSignalledTokens: BigInt!
+
+  linkedEntity: Subgraph
+  entityVersion: Int!
+  currentVersionRelationEntity: CurrentSubgraphDeploymentRelation
+  initializing: Boolean!
 }
+
+type CurrentSubgraphDeploymentRelation @entity {
+  "Auxiliary entity used to batch update Subgraph entities when signalling on the deployment changes. ID replicates the deployment ID and adds a counter, to make it easy to reproduce."
+  id: ID!
+  subgraph: Subgraph!
+  deployment: SubgraphDeployment!
+  "Indicates whether this relation is active. This means that the deployment is still the current deployment for the named Subgraph"
+  active: Boolean!
+}
+
 
 type GraphAccount @entity {
 
@@ -60,6 +75,18 @@ type SubgraphDeployment @entity {
   schema: String
   schemaIpfsHash: String
   contract: [Contract!]!
+
+  "CURRENT signalled tokens in the bonding curve"
+  signalledTokens: BigInt!
+  
+  # Counters for currentSignalledTokens tracking on Subgraph
+  
+  "Total amount of Subgraph entities that used this deployment at some point. subgraphCount >= activeSubgraphCount + deprecatedSubgraphCount"
+  subgraphCount: Int!
+  "Amount of active Subgraph entities that are currently using this deployment. Deprecated subgraph entities are not counted"
+  activeSubgraphCount: Int!
+  "Amount of Subgraph entities that were currently using this deployment when they got deprecated"
+  deprecatedSubgraphCount: Int!
 }
 
 type Network @entity {
@@ -78,6 +105,8 @@ type SubgraphVersion @entity {
   metadataHash: Bytes
   description: String
   label: String
+  linkedEntity: Subgraph
+  entityVersion: Int!
 }
 
 """
