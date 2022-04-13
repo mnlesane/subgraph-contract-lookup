@@ -315,3 +315,15 @@ export function updateCurrentDeploymentLinks(
     subgraph.save()
   }
 }
+
+export function batchUpdateSubgraphSignalledTokens(deployment: SubgraphDeployment): void {
+  for (let i = 0; i < deployment.subgraphCount; i++) {
+    let id = deployment.id.concat('-').concat(BigInt.fromI32(i).toString())
+    let relationEntity = CurrentSubgraphDeploymentRelation.load(id)!
+    if (relationEntity.active) {
+      let subgraphEntity = Subgraph.load(relationEntity.subgraph)!
+      subgraphEntity.currentSignalledTokens = deployment.signalledTokens
+      subgraphEntity.save()
+    }
+  }
+}
