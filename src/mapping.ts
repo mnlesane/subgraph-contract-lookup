@@ -95,12 +95,6 @@ import {
 
 /*
 TODO
-[V1]
-* name
-* logo
-* IPFS hash (so you can link to the explorer as well)
-* deployment/version
-
 [V1.5]
 * publisher/ENS
 

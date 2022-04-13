@@ -256,6 +256,7 @@ export function duplicateOrUpdateSubgraphWithNewID(entity: Subgraph, newID: Stri
   subgraph.website = entity.website
   subgraph.displayName = entity.displayName
   subgraph.linkedEntity = entity.id // this is the entity id, since for the entity, this value will be this particular entity.
+  subgraph.entityVersion = newEntityVersion
   return subgraph as Subgraph
 }
 
@@ -271,6 +272,7 @@ export function duplicateOrUpdateSubgraphVersionWithNewID(entity: SubgraphVersio
   version.description = entity.description
   version.label = entity.label
   version.linkedEntity = entity.id
+  version.entityVersion = newEntityVersion
   return version as SubgraphVersion
 }
 
