@@ -39,6 +39,19 @@
   }
 }
 
+{
+  subgraphs(
+    orderBy:currentSignalledTokens,
+    orderDirection:desc,
+    where:{entityVersion:2}) {
+    id
+    displayName
+    signalledTokens
+    currentSignalledTokens
+  }
+}
+
+
 TODO V2:
 * ENS integration
 * Entity v1 vs v2 Reconciliation
@@ -267,22 +280,35 @@ export function processManifest(subgraph: Subgraph, deployment: SubgraphDeployme
   }
 }
 
+/*
+ProcessManifest calls:
+- handleSubgraphPublishedV2
+- handleSubgraphPublished
+- handleSubgraphVersionUpdated
+*/
+
 export function handleSubgraphPublishedV2(event: SubgraphPublished1): void {
   let bigIntID = event.params.subgraphID
-  let subgraph = createOrLoadSubgraph(bigIntID)
+  let subgraph = createOrLoadSubgraph(bigIntID,event.block.timestamp)
   
   let graphAccount = createOrLoadGraphAccount(event.transaction.from)
   subgraph.owner = graphAccount.id
 
-  subgraph.createdAt = event.block.timestamp.toI32()
   if(event.block.timestamp.toI32() > subgraph.updatedAt) {
     subgraph.updatedAt = event.block.timestamp.toI32()
   }
   let subgraphDeploymentID = event.params.subgraphDeploymentID.toHexString()
   
+  let oldVersionID = subgraph.currentVersion
+
+  let versionNumber = subgraph.versionCount
+  let versionID = joinID([subgraph.id, subgraph.versionCount.toString()])
+  subgraph.currentVersion = versionID
+  subgraph.versionCount = subgraph.versionCount.plus(BigInt.fromI32(1))
+  subgraph.updatedAt = event.block.timestamp.toI32()
+
   subgraph.save()
 
-  let oldVersionID = subgraph.currentVersion
 
   // Create subgraph deployment, if needed. Can happen if the deployment has never been staked on
   let deployment = createOrLoadSubgraphDeployment(subgraphDeploymentID)
@@ -314,7 +340,7 @@ export function handleSubgraphPublished(event: SubgraphPublished): void {
   ])
   
   let subgraphID = getSubgraphID(event.params.graphAccount, event.params.subgraphNumber)
-  let subgraph = createOrLoadSubgraph(subgraphID)
+  let subgraph = createOrLoadSubgraph(subgraphID,event.block.timestamp)
   let oldVersionID = subgraph.currentVersion
   
   let subgraphDuplicate = duplicateOrUpdateSubgraphWithNewID(subgraph, oldID, 1)
@@ -329,7 +355,6 @@ export function handleSubgraphPublished(event: SubgraphPublished): void {
   }
   let subgraphDeploymentID = event.params.subgraphDeploymentID.toHexString()
   
-  subgraph.save()
   
   // Create subgraph deployment, if needed. Can happen if the deployment has never been staked on
   let deployment = createOrLoadSubgraphDeployment(subgraphDeploymentID)
@@ -341,6 +366,10 @@ export function handleSubgraphPublished(event: SubgraphPublished): void {
   let versionIDOld = joinID([oldID, subgraph.versionCount.toString()])
   let versionIDNew = joinID([subgraph.id, subgraph.versionCount.toString()])
   
+  subgraph.currentVersion = versionIDNew
+  subgraphDuplicate.currentVersion = versionIDOld
+  subgraph.versionCount = versionNumber.plus(BigInt.fromI32(1))
+  
   // Create subgraph version
   let subgraphVersion = createOrLoadSubgraphVersion(subgraph,deployment)
   subgraph.updatedAt = event.block.timestamp.toI32()
@@ -350,6 +379,7 @@ export function handleSubgraphPublished(event: SubgraphPublished): void {
   subgraphVersion = fetchSubgraphVersionMetadata(subgraphVersion, base58Hash)
   subgraphVersion.entityVersion = 2
   subgraphVersion.save()
+  subgraph.save()
 
   let subgraphVersionDuplicate = duplicateOrUpdateSubgraphVersionWithNewID(
     subgraphVersion,
@@ -378,7 +408,7 @@ export function handleSubgraphPublished(event: SubgraphPublished): void {
 
 export function handleSubgraphDeprecatedV2(event: SubgraphDeprecated1): void {
   let bigIntID = event.params.subgraphID
-  let subgraph = createOrLoadSubgraph(bigIntID)
+  let subgraph = createOrLoadSubgraph(bigIntID,event.block.timestamp)
   subgraph.active = false
 
   let subgraphDuplicate: Subgraph | null = null
@@ -401,7 +431,7 @@ export function handleSubgraphDeprecatedV2(event: SubgraphDeprecated1): void {
 
 export function handleSubgraphDeprecated(event: SubgraphDeprecated): void {
   let bigIntID = getSubgraphID(event.params.graphAccount, event.params.subgraphNumber)
-  let subgraph = createOrLoadSubgraph(bigIntID)
+  let subgraph = createOrLoadSubgraph(bigIntID,event.block.timestamp)
   let graphAccount = createOrLoadGraphAccount(event.params.graphAccount)
   subgraph.owner = graphAccount.id
   subgraph.active = false
@@ -544,7 +574,7 @@ export function handleSubgraphMetadataUpdated(event: SubgraphMetadataUpdated): v
   let subgraphID = getSubgraphID(event.params.graphAccount, event.params.subgraphNumber)
 
   // Create subgraph
-  let subgraph = createOrLoadSubgraph(subgraphID)
+  let subgraph = createOrLoadSubgraph(subgraphID,event.block.timestamp)
   
   let graphAccount = createOrLoadGraphAccount(event.params.graphAccount)
   subgraph.owner = graphAccount.id
@@ -589,7 +619,7 @@ export function handleTransfer(event: Transfer): void {
 
   // Update subgraph v2
   let subgraph = createOrLoadSubgraph(
-    event.params.tokenId
+    event.params.tokenId,event.block.timestamp
   )
   subgraph.updatedAt = event.block.timestamp.toI32()
   subgraph.owner = newOwner.id

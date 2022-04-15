@@ -35,11 +35,12 @@ export function createOrLoadGraphAccount(graphAccountID: Bytes): GraphAccount {
   return graphAccount as GraphAccount
 }
 
-export function createOrLoadSubgraph(bigIntID: BigInt): Subgraph {
+export function createOrLoadSubgraph(bigIntID: BigInt, timestamp: BigInt): Subgraph {
   let subgraphID = convertBigIntSubgraphIDToBase58(bigIntID)
   let subgraph = Subgraph.load(subgraphID)
   if(subgraph == null) {
     subgraph = new Subgraph(subgraphID)
+    subgraph.createdAt = timestamp.toI32()
     subgraph.active = true
     subgraph.owner = ""
     subgraph.entityVersion = 2
@@ -257,6 +258,7 @@ export function duplicateOrUpdateSubgraphWithNewID(entity: Subgraph, newID: Stri
   subgraph.displayName = entity.displayName
   subgraph.linkedEntity = entity.id // this is the entity id, since for the entity, this value will be this particular entity.
   subgraph.entityVersion = newEntityVersion
+  subgraph.save();
   return subgraph as Subgraph
 }
 
@@ -282,6 +284,7 @@ export function updateCurrentDeploymentLinks(
   subgraph: Subgraph,
   deprecated: boolean = false,
 ): void {
+log.debug("updateCurrentDeploymentLinks() - 1",[]);
   if (oldDeployment != null) {
     if (!deprecated) {
       let oldRelationEntity = CurrentSubgraphDeploymentRelation.load(
@@ -298,7 +301,9 @@ export function updateCurrentDeploymentLinks(
     oldDeployment.save()
   }
 
+log.debug("updateCurrentDeploymentLinks() - 2",[]);
   if (newDeployment != null) {
+log.debug("newDeployment is not null.",[]);
     let newRelationID = newDeployment.id
       .concat('-')
       .concat(BigInt.fromI32(newDeployment.subgraphCount).toString())
@@ -317,7 +322,7 @@ export function updateCurrentDeploymentLinks(
     subgraph.save()
   }
 }
-
+/*
 export function batchUpdateSubgraphSignalledTokens(deployment: SubgraphDeployment): void {
   for (let i = 0; i < deployment.subgraphCount; i++) {
     let id = deployment.id.concat('-').concat(BigInt.fromI32(i).toString())
@@ -329,3 +334,4 @@ export function batchUpdateSubgraphSignalledTokens(deployment: SubgraphDeploymen
     }
   }
 }
+*/
